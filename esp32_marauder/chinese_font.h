@@ -1073,8 +1073,15 @@ static inline void drawGlyphRowMajor(TFT_eSPI& _tft, uint16_t gi, int32_t x, int
   _tft.startWrite();
   uint16_t fg = _tft.textcolor;
   uint16_t bg = _tft.textbgcolor;
+  // Draw background row-by-row using drawFastHLine instead of fillRect.
+  // fillRect can set the TFT address window in a way that clips the last
+  // row of subsequent drawPixel calls, causing the bottom 1px of CJK
+  // glyphs to be missing. drawFastHLine uses the same rendering pipeline
+  // as drawPixel and avoids this address window conflict.
   if (fg != bg && gw > 0 && gh > 0) {
-    _tft.fillRect(dx, dy, gw, gh, bg);
+    for (uint8_t row = 0; row < gh; row++) {
+      _tft.drawFastHLine(dx, dy + row, gw, bg);
+    }
   }
   for (uint8_t row = 0; row < gh; row++) {
     for (uint8_t colByte = 0; colByte < bytesPerRow; colByte++) {
@@ -1133,14 +1140,26 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
       // The Chinese font's ASCII glyphs are only 3-9px tall and look
       // cut off / incomplete when mixed with 12px CJK characters.
       // +3px Y offset centres the 8px default font within the 14px Chinese font line height.
-      // Use drawChar with explicit parameters instead of write() to avoid
-      // any potential state interference with drawGlyphRowMajor for CJK chars.
+      // Save/restore text colors to prevent write() from modifying textbgcolor,
+      // which would cause drawGlyphRowMajor's fillRect to use the wrong background
+      // color and overwrite the bottom row of CJK glyphs.
+      uint16_t saved_fg = _tft.textcolor;
+      uint16_t saved_bg = _tft.textbgcolor;
+      _tft.setFreeFont(NULL);
       _tft.setTextSize(1);
-      _tft.drawChar(curX, curY + 3, c, _tft.textcolor, _tft.textbgcolor, 1);
+      _tft.setCursor(curX, curY + 3);
+      _tft.write(c);
+      _tft.setTextColor(saved_fg, saved_bg);
       curX += 6;  // default font character width at text size 1
       _tft.setCursor(curX, curY);
     } else {
+      // Save/restore text colors to prevent setFreeFont from
+      // modifying textcolor/textbgcolor, which would cause
+      // drawGlyphRowMajor to use wrong background/fill colors.
+      uint16_t saved_fg = _tft.textcolor;
+      uint16_t saved_bg = _tft.textbgcolor;
       _tft.setFreeFont(&chinese_font);
+      _tft.setTextColor(saved_fg, saved_bg);
       uint16_t idx = cjk_to_font_index(str);
       if (idx) {
         uint16_t gi = idx - 0x0020;
