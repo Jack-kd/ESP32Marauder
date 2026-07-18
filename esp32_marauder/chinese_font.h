@@ -1095,12 +1095,13 @@ static inline void drawGlyphRowMajor(TFT_eSPI& _tft, uint16_t gi, int32_t x, int
 
 // Print a UTF-8 string using the Chinese font with CJK translation.
 //
-// ALL characters (both ASCII and CJK) are rendered manually via row-major
-// bitmap rendering. This avoids two issues with TFT_eSPI::drawChar():
+// ASCII characters (0x20-0x7E) are rendered using the TFT_eSPI default font
+// (GLCD, 6x8px) instead of the Chinese font's tiny ASCII glyphs (3-9px).
+// CJK characters are rendered via row-major bitmap rendering from the
+// Chinese font data. This avoids two issues with TFT_eSPI::drawChar():
 // 1. uint8_t gi truncation for glyph indices > 255
 // 2. Inconsistent rendering between ASCII (via write/drawChar) and CJK
 inline void printChinese(TFT_eSPI& _tft, const char* str) {
-  _tft.setFreeFont(&chinese_font);
   int32_t curX = _tft.getCursorX();
   int32_t curY = _tft.getCursorY();
 
@@ -1128,13 +1129,18 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
         _tft.setCursor(curX, curY);
         continue;
       }
-      uint16_t gi = c - 0x0020;
-      uint8_t adv;
-      drawGlyphRowMajor(_tft, gi, curX, curY, adv);
-      if (adv == 0) adv = 6;  // space (xAdvance=0) → 6px
-      curX += adv;
+      // Use TFT default font (GLCD 6x8px) for ASCII chars.
+      // The Chinese font's ASCII glyphs are only 3-9px tall and look
+      // cut off / incomplete when mixed with 12px CJK characters.
+      // +2px Y offset centres the 8px default font within the 12px Chinese font line height.
+      _tft.setFreeFont(NULL);
+      _tft.setTextSize(1);
+      _tft.setCursor(curX, curY + 2);
+      _tft.drawChar(c);
+      curX += 6;  // default font character width at text size 1
       _tft.setCursor(curX, curY);
     } else {
+      _tft.setFreeFont(&chinese_font);
       uint16_t idx = cjk_to_font_index(str);
       if (idx) {
         uint16_t gi = idx - 0x0020;
@@ -1186,14 +1192,13 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
 }
 
 // Calculate pixel width of a UTF-8 string when rendered with Chinese font.
-// Uses actual glyph xAdvance from the font data (not estimates).
+// ASCII characters use 6px (matching TFT default font width, same as printChinese).
+// CJK characters use actual glyph xAdvance from the font data.
 inline int chineseStringWidth(const char* str) {
   int w = 0;
   for (const char* p = str; *p; ) {
     if ((uint8_t)*p < 0x80) {
-      uint16_t gi = (uint8_t)*p - 0x0020;
-      uint8_t adv = chinese_font_glyphs[gi].xAdvance;
-      w += (adv > 0) ? adv : 6;  // fallback for space (xAdvance=0)
+      w += 6;  // default font character width at text size 1
       p++;
     } else {
       uint16_t idx = cjk_to_font_index(p);
