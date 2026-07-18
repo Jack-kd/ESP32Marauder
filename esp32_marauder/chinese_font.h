@@ -1073,8 +1073,15 @@ static inline void drawGlyphRowMajor(TFT_eSPI& _tft, uint16_t gi, int32_t x, int
   _tft.startWrite();
   uint16_t fg = _tft.textcolor;
   uint16_t bg = _tft.textbgcolor;
+  // Draw background row-by-row using drawFastHLine instead of fillRect.
+  // fillRect can set the TFT address window in a way that clips the last
+  // row of subsequent drawPixel calls, causing the bottom 1px of CJK
+  // glyphs to be missing. drawFastHLine uses the same rendering pipeline
+  // as drawPixel and avoids this address window conflict.
   if (fg != bg && gw > 0 && gh > 0) {
-    _tft.fillRect(dx, dy, gw, gh, bg);
+    for (uint8_t row = 0; row < gh; row++) {
+      _tft.drawFastHLine(dx, dy + row, gw, bg);
+    }
   }
   for (uint8_t row = 0; row < gh; row++) {
     for (uint8_t colByte = 0; colByte < bytesPerRow; colByte++) {
@@ -1095,12 +1102,13 @@ static inline void drawGlyphRowMajor(TFT_eSPI& _tft, uint16_t gi, int32_t x, int
 
 // Print a UTF-8 string using the Chinese font with CJK translation.
 //
-// ALL characters (both ASCII and CJK) are rendered manually via row-major
-// bitmap rendering. This avoids two issues with TFT_eSPI::drawChar():
+// ASCII characters (0x20-0x7E) are rendered using the TFT_eSPI default font
+// (GLCD, 6x8px) instead of the Chinese font's tiny ASCII glyphs (3-9px).
+// CJK characters are rendered via row-major bitmap rendering from the
+// Chinese font data. This avoids two issues with TFT_eSPI::drawChar():
 // 1. uint8_t gi truncation for glyph indices > 255
 // 2. Inconsistent rendering between ASCII (via write/drawChar) and CJK
 inline void printChinese(TFT_eSPI& _tft, const char* str) {
-  _tft.setFreeFont(&chinese_font);
   int32_t curX = _tft.getCursorX();
   int32_t curY = _tft.getCursorY();
 
@@ -1128,13 +1136,30 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
         _tft.setCursor(curX, curY);
         continue;
       }
-      uint16_t gi = c - 0x0020;
-      uint8_t adv;
-      drawGlyphRowMajor(_tft, gi, curX, curY, adv);
-      if (adv == 0) adv = 6;  // space (xAdvance=0) → 6px
-      curX += adv;
+      // Use TFT default font (GLCD 6x8px) for ASCII chars.
+      // The Chinese font's ASCII glyphs are only 3-9px tall and look
+      // cut off / incomplete when mixed with 12px CJK characters.
+      // +3px Y offset centres the 8px default font within the 14px Chinese font line height.
+      // Save/restore text colors to prevent write() from modifying textbgcolor,
+      // which would cause drawGlyphRowMajor's fillRect to use the wrong background
+      // color and overwrite the bottom row of CJK glyphs.
+      uint16_t saved_fg = _tft.textcolor;
+      uint16_t saved_bg = _tft.textbgcolor;
+      _tft.setFreeFont(NULL);
+      _tft.setTextSize(1);
+      _tft.setCursor(curX, curY + 3);
+      _tft.write(c);
+      _tft.setTextColor(saved_fg, saved_bg);
+      curX += 6;  // default font character width at text size 1
       _tft.setCursor(curX, curY);
     } else {
+      // Save/restore text colors to prevent setFreeFont from
+      // modifying textcolor/textbgcolor, which would cause
+      // drawGlyphRowMajor to use wrong background/fill colors.
+      uint16_t saved_fg = _tft.textcolor;
+      uint16_t saved_bg = _tft.textbgcolor;
+      _tft.setFreeFont(&chinese_font);
+      _tft.setTextColor(saved_fg, saved_bg);
       uint16_t idx = cjk_to_font_index(str);
       if (idx) {
         uint16_t gi = idx - 0x0020;
@@ -1186,14 +1211,13 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
 }
 
 // Calculate pixel width of a UTF-8 string when rendered with Chinese font.
-// Uses actual glyph xAdvance from the font data (not estimates).
+// ASCII characters use 6px (matching TFT default font width, same as printChinese).
+// CJK characters use actual glyph xAdvance from the font data.
 inline int chineseStringWidth(const char* str) {
   int w = 0;
   for (const char* p = str; *p; ) {
     if ((uint8_t)*p < 0x80) {
-      uint16_t gi = (uint8_t)*p - 0x0020;
-      uint8_t adv = chinese_font_glyphs[gi].xAdvance;
-      w += (adv > 0) ? adv : 6;  // fallback for space (xAdvance=0)
+      w += 6;  // default font character width at text size 1
       p++;
     } else {
       uint16_t idx = cjk_to_font_index(p);
@@ -1216,17 +1240,43 @@ inline void drawCentreStringChinese(TFT_eSPI& _tft, const char* str, int x, int 
   printChinese(_tft, str);
 }
 
+// Helper: check if a string contains only printable ASCII characters (0x20-0x7E)
+// English-only labels should use the standard FreeMono9pt7b font, not the
+// Chinese font's tiny ASCII glyphs (which are only 6-9px tall for lowercase).
+static inline bool isAsciiOnly(const char* str) {
+  if (!str || !*str) return false;
+  for (const char* p = str; *p; p++) {
+    if ((uint8_t)*p < 0x20 || (uint8_t)*p >= 0x80) return false;
+  }
+  return true;
+}
+
 // Draw a Chinese button (replaces drawButton for CJK labels)
+// Uses the standard English font (FreeMono9pt7b) for ASCII-only labels
+// to avoid the tiny 6-9px ASCII glyphs in the Chinese font that make
+// English text appear cut off / incomplete.
 inline void drawChineseButton(TFT_eSPI& _tft, int x, int y, int w, int h, const char* label, uint16_t outline, uint16_t fill, uint16_t textcolor) {
   _tft.fillRoundRect(x, y, w, h, 2, fill);
   _tft.drawRoundRect(x, y, w, h, 2, outline);
-  int lw = chineseStringWidth(label);
-  // Set BOTH foreground and background: background must match button fill
-  // because drawGlyphRowMajor fills glyph bbox with textbgcolor
-  _tft.setTextColor(textcolor, fill);
-  // +4px extra Y offset to prevent text from being clipped by the rounded border
-  _tft.setCursor(x + (w - lw) / 2, y + (h - chinese_font.yAdvance) / 2 + 4);
-  printChinese(_tft, label);
+
+  if (isAsciiOnly(label)) {
+    // Use standard English font for ASCII-only labels (much more readable)
+    _tft.setFreeFont(&FreeMono9pt7b);
+    _tft.setTextSize(1);
+    _tft.setTextColor(textcolor, fill);
+    int tw = _tft.textWidth(label);
+    int fh = _tft.fontHeight();  // yAdvance (~18 for FreeMono9pt7b)
+    _tft.setCursor(x + (w - tw) / 2, y + (h + fh) / 2 - 2);
+    _tft.print(label);
+    _tft.setFreeFont(NULL);
+  } else {
+    int lw = chineseStringWidth(label);
+    _tft.setTextColor(textcolor, fill);
+    // Centre 12px CJK glyphs (yOffset=0) in the button:
+    //   cursor = y + (h - 12) / 2 = y + (h - chinese_font.yAdvance) / 2 + 1
+    _tft.setCursor(x + (w - lw) / 2, y + (h - chinese_font.yAdvance) / 2 + 1);
+    printChinese(_tft, label);
+  }
 }
 
 // Helper macros

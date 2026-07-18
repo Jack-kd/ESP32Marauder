@@ -1227,7 +1227,10 @@
       //#define MENU_FONT &FreeMonoBold9pt7b
       //#define MENU_FONT &FreeSans9pt7b
       //#define MENU_FONT &FreeSansBold9pt7b
-      #define BUTTON_SCREEN_LIMIT 12
+      // KEY_H=34 (increased for Chinese font), each item takes 35px.
+      // Screen available height: TFT_HEIGHT - KEY_Y = 320 - 50 = 270px.
+      // Items visible: 270 / 35 ≈ 7.7 → 8 items fit on screen.
+      #define BUTTON_SCREEN_LIMIT 8
       #define BUTTON_ARRAY_LEN BUTTON_SCREEN_LIMIT
       #define STATUS_BAR_WIDTH 16
       #define LVGL_TICK_PERIOD 6
