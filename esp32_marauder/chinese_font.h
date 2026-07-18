@@ -1132,10 +1132,10 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
       // Use TFT default font (GLCD 6x8px) for ASCII chars.
       // The Chinese font's ASCII glyphs are only 3-9px tall and look
       // cut off / incomplete when mixed with 12px CJK characters.
-      // +2px Y offset centres the 8px default font within the 12px Chinese font line height.
+      // +3px Y offset centres the 8px default font within the 14px Chinese font line height.
       _tft.setFreeFont(NULL);
       _tft.setTextSize(1);
-      _tft.setCursor(curX, curY + 2);
+      _tft.setCursor(curX, curY + 3);
       _tft.write(c);  // draw single ASCII char with default GLCD font
       curX += 6;  // default font character width at text size 1
       _tft.setCursor(curX, curY);
@@ -1253,8 +1253,9 @@ inline void drawChineseButton(TFT_eSPI& _tft, int x, int y, int w, int h, const 
   } else {
     int lw = chineseStringWidth(label);
     _tft.setTextColor(textcolor, fill);
-    // +4px extra Y offset to prevent text from being clipped by the rounded border
-    _tft.setCursor(x + (w - lw) / 2, y + (h - chinese_font.yAdvance) / 2 + 4);
+    // Centre 12px CJK glyphs (yOffset=0) in the button:
+    //   cursor = y + (h - 12) / 2 = y + (h - chinese_font.yAdvance) / 2 + 1
+    _tft.setCursor(x + (w - lw) / 2, y + (h - chinese_font.yAdvance) / 2 + 1);
     printChinese(_tft, label);
   }
 }
