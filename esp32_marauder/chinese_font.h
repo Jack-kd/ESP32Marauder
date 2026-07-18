@@ -1136,7 +1136,7 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
       _tft.setFreeFont(NULL);
       _tft.setTextSize(1);
       _tft.setCursor(curX, curY + 2);
-      _tft.drawChar(c);
+      _tft.write(c);  // draw single ASCII char with default GLCD font
       curX += 6;  // default font character width at text size 1
       _tft.setCursor(curX, curY);
     } else {
