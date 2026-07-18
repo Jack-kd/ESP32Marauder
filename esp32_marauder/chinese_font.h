@@ -1216,17 +1216,42 @@ inline void drawCentreStringChinese(TFT_eSPI& _tft, const char* str, int x, int 
   printChinese(_tft, str);
 }
 
+// Helper: check if a string contains only printable ASCII characters (0x20-0x7E)
+// English-only labels should use the standard FreeMono9pt7b font, not the
+// Chinese font's tiny ASCII glyphs (which are only 6-9px tall for lowercase).
+static inline bool isAsciiOnly(const char* str) {
+  if (!str || !*str) return false;
+  for (const char* p = str; *p; p++) {
+    if ((uint8_t)*p < 0x20 || (uint8_t)*p >= 0x80) return false;
+  }
+  return true;
+}
+
 // Draw a Chinese button (replaces drawButton for CJK labels)
+// Uses the standard English font (FreeMono9pt7b) for ASCII-only labels
+// to avoid the tiny 6-9px ASCII glyphs in the Chinese font that make
+// English text appear cut off / incomplete.
 inline void drawChineseButton(TFT_eSPI& _tft, int x, int y, int w, int h, const char* label, uint16_t outline, uint16_t fill, uint16_t textcolor) {
   _tft.fillRoundRect(x, y, w, h, 2, fill);
   _tft.drawRoundRect(x, y, w, h, 2, outline);
-  int lw = chineseStringWidth(label);
-  // Set BOTH foreground and background: background must match button fill
-  // because drawGlyphRowMajor fills glyph bbox with textbgcolor
-  _tft.setTextColor(textcolor, fill);
-  // +4px extra Y offset to prevent text from being clipped by the rounded border
-  _tft.setCursor(x + (w - lw) / 2, y + (h - chinese_font.yAdvance) / 2 + 4);
-  printChinese(_tft, label);
+
+  if (isAsciiOnly(label)) {
+    // Use standard English font for ASCII-only labels (much more readable)
+    _tft.setFreeFont(&FreeMono9pt7b);
+    _tft.setTextSize(1);
+    _tft.setTextColor(textcolor, fill);
+    int tw = _tft.textWidth(label);
+    int fh = _tft.fontHeight();  // yAdvance (~18 for FreeMono9pt7b)
+    _tft.setCursor(x + (w - tw) / 2, y + (h + fh) / 2 - 2);
+    _tft.print(label);
+    _tft.setFreeFont(NULL);
+  } else {
+    int lw = chineseStringWidth(label);
+    _tft.setTextColor(textcolor, fill);
+    // +4px extra Y offset to prevent text from being clipped by the rounded border
+    _tft.setCursor(x + (w - lw) / 2, y + (h - chinese_font.yAdvance) / 2 + 4);
+    printChinese(_tft, label);
+  }
 }
 
 // Helper macros
