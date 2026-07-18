@@ -1133,10 +1133,10 @@ inline void printChinese(TFT_eSPI& _tft, const char* str) {
       // The Chinese font's ASCII glyphs are only 3-9px tall and look
       // cut off / incomplete when mixed with 12px CJK characters.
       // +3px Y offset centres the 8px default font within the 14px Chinese font line height.
-      _tft.setFreeFont(NULL);
+      // Use drawChar with explicit parameters instead of write() to avoid
+      // any potential state interference with drawGlyphRowMajor for CJK chars.
       _tft.setTextSize(1);
-      _tft.setCursor(curX, curY + 3);
-      _tft.write(c);  // draw single ASCII char with default GLCD font
+      _tft.drawChar(curX, curY + 3, c, _tft.textcolor, _tft.textbgcolor, 1);
       curX += 6;  // default font character width at text size 1
       _tft.setCursor(curX, curY);
     } else {
