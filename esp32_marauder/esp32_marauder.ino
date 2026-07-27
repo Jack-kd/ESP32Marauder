@@ -47,6 +47,7 @@ https://www.online-utility.org/image/convert/to/XBM
 #ifdef HAS_SCREEN
   #include "Display.h"
   #include "MenuFunctions.h"
+  #include "BootLogo.h"
 #endif
 
 #ifdef HAS_BUTTONS
@@ -313,6 +314,12 @@ void setup()
   #endif
 
   #ifdef HAS_SCREEN
+    // Draw boot logo as background image
+    #if defined(BOOT_LOGO_WIDTH) && defined(BOOT_LOGO_HEIGHT)
+      drawBootLogo(display_obj.tft);
+    #endif
+
+    // Draw boot text on top of the logo background
     #if !defined(MARAUDER_CARDPUTER) && !defined(MARAUDER_CARDPUTER_ADV)
       display_obj.tft.drawCentreString("ESP32 Marauder", TFT_WIDTH/2, TFT_HEIGHT * 0.33, 1);
       display_obj.tft.drawCentreString("JustCallMeKoko", TFT_WIDTH/2, TFT_HEIGHT * 0.5, 1);
