@@ -17,7 +17,7 @@
 class Web
 {
   private:
-    AsyncWebServer server;
+    AsyncWebServer server{80};   // Web 控制台端口
 
     // ---- JSON 序列化 ----------------
     String buildStatusJson();
@@ -28,7 +28,6 @@ class Web
 
     // ---- 命令处理 ----------------
     void handleCommand(AsyncWebServerRequest *request);
-    void runWebCommand(String cmd);
 
   public:
     void RunSetup();
